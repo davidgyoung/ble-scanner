@@ -32,3 +32,11 @@ In the first line above, `B8:27:EB:1F:93:4D` is the hardware MAC address, -68 is
 
 Feel free to open an Issue or submit a Pull Request on Github here: https://github.com/davidgyoung/ble-scanner
 
+## License
+
+[BSD 3](./LICENSE)
+
+## Credits
+
+This program is based off of code by Damian Kołakowski here https://github.com/damian-kolakowski/intel-edison-playground/blob/master/scan.c
+

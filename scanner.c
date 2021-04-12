@@ -1,9 +1,5 @@
-// To compile this program, you need to install:
-//   sudo apt-get install libbluetooth-dev
-// Then you can compile it with:
-//   cc scanner.c -lbluetooth -o scanner
-// You can then run it with:
-//   ./scanner
+// Copyright (c) 2021 David G. Young
+// Copyright (c) 2015 Damian Kołakowski. All rights reserved.
 
 #include <stdlib.h>
 #include <errno.h>
