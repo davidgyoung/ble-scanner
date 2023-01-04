@@ -13,7 +13,6 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 #include <time.h>
-#include <poll.h>
 
 struct hci_request ble_hci_request(uint16_t ocf, int clen, void * status, void * cparam)
 {
@@ -153,13 +152,10 @@ int main()
 					info = (le_advertising_info *)offset;
 					char addr[18];
 					ba2str( &(info->bdaddr), addr);
-					if ( info->data[0] == 0x1e && info->data[1] == 0xff )
-					{
-	                    			printf("%s %d", addr, (int8_t)info->data[info->length]);
-						printf(" %d", info->length );
-        	            			for ( int i = 0; i < info->length; i++ ) printf( " %02X", (unsigned char) info->data[i] );
-					}
-		                    	printf("\n");
+					printf("%s %d", addr, (int8_t)info->data[info->length]);
+					for (int i = 0; i < info->length; i++)
+						printf(" %02X", (unsigned char)info->data[i]);
+					printf("\n");
 					offset = info->data + info->length + 2;
 				}
 			}
