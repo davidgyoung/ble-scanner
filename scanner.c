@@ -1,15 +1,19 @@
 // Copyright (c) 2021 David G. Young
 // Copyright (c) 2015 Damian Kołakowski. All rights reserved.
 
+// cc scanner.c -lbluetooth -o scanner
+
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 #include <time.h>
+#include <poll.h>
 
 struct hci_request ble_hci_request(uint16_t ocf, int clen, void * status, void * cparam)
 {
@@ -113,35 +117,53 @@ int main()
 	evt_le_meta_event * meta_event;
 	le_advertising_info * info;
 	int len;
+	int count = 0;
 
-    int count = 0;
-    unsigned now = (unsigned)time(NULL);
-    unsigned last_detection_time = now;
-    // Keep scanning until we see nothing for 10 secs or we have seen lots of advertisements.  Then exit.
-    // We exit in this case because the scan may have failed or stopped. Higher level code can restart
-	while ( last_detection_time - now < 10 && count < 1000 ) {
+	const int timeout = 30;
+	const int reset_timeout = 1; // wether to reset the timer on a received scan event (continuous scanning)
+	const int max_count = 1000;
+
+	if ( timeout > 0 )
+		alarm( timeout ); // set the alarm timer, when time is up the program will be terminated
+
+	sigset_t unblock_set; // apparently the signal must be unblocked in some cases
+	sigemptyset ( &unblock_set );
+	sigaddset ( &unblock_set, SIGALRM );
+	if ( sigprocmask( SIG_UNBLOCK, &unblock_set, NULL ) != 0 )
+		fprintf( stderr, "alarm unblock failed" );
+
+	// Scan in progress ...
+	while ( count < max_count || max_count <= 0 )
+	{
 		len = read(device, buf, sizeof(buf));
-		if ( len >= HCI_EVENT_HDR_SIZE ) {
-		    count++;
-            last_detection_time = (unsigned)time(NULL);
+		if ( len >= HCI_EVENT_HDR_SIZE )
+		{
 			meta_event = (evt_le_meta_event*)(buf+HCI_EVENT_HDR_SIZE+1);
-			if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT ) {
+			if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT )
+			{
+				count++;
+				if ( reset_timeout != 0 && timeout > 0 ) // reset/restart the alarm timer
+					alarm( timeout );
+
+				// print results
 				uint8_t reports_count = meta_event->data[0];
 				void * offset = meta_event->data + 1;
-				while ( reports_count-- ) {
+				while ( reports_count-- )
+				{
 					info = (le_advertising_info *)offset;
 					char addr[18];
-					ba2str(&(info->bdaddr), addr);
-                    printf("%s %d", addr, (int8_t)info->data[info->length]);
-                    for (int i = 0; i < info->length; i++) {
-                       printf(" %02X", (unsigned char)info->data[i]);
-                    }
-                    printf("\n");
+					ba2str( &(info->bdaddr), addr);
+					if ( info->data[0] == 0x1e && info->data[1] == 0xff )
+					{
+	                    			printf("%s %d", addr, (int8_t)info->data[info->length]);
+						printf(" %d", info->length );
+        	            			for ( int i = 0; i < info->length; i++ ) printf( " %02X", (unsigned char) info->data[i] );
+					}
+		                    	printf("\n");
 					offset = info->data + info->length + 2;
 				}
 			}
 		}
-        now = (unsigned)time(NULL);
 	}
 
 	// Disable scanning.
