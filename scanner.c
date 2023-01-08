@@ -14,6 +14,8 @@
 #include <bluetooth/hci_lib.h>
 #include <time.h>
 
+int device;
+
 struct hci_request ble_hci_request(uint16_t ocf, int clen, void * status, void * cparam)
 {
 	struct hci_request rq;
@@ -27,13 +29,40 @@ struct hci_request ble_hci_request(uint16_t ocf, int clen, void * status, void *
 	return rq;
 }
 
+// cleanup and exit the program with exit code 0
+void exit_clean()
+{
+	int ret, status;
+
+	// Disable scanning.
+
+	le_set_scan_enable_cp scan_cp;
+	memset(&scan_cp, 0, sizeof(scan_cp));
+	scan_cp.enable = 0x00;	// Disable flag.
+
+	struct hci_request disable_adv_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &scan_cp);
+	ret = hci_send_req(device, &disable_adv_rq, 1000);
+	if ( ret < 0 )
+		perror("Failed to disable scan.");
+
+	hci_close_dev(device);
+	exit( 0 );
+}
+
+// handles timeout
+void signal_handler( int s )
+{
+	//printf( "received SIGALRM\n" );
+	exit_clean();
+}
+
 int main()
 {
 	int ret, status;
 
 	// Get HCI device.
 
-	int device = hci_open_dev(1);
+	device = hci_open_dev(1);
 	if ( device < 0 ) {
 		device = hci_open_dev(0);
 		if (device >= 0) {
@@ -122,16 +151,29 @@ int main()
 	const int reset_timeout = 1; // wether to reset the timer on a received scan event (continuous scanning)
 	const int max_count = 1000;
 
+	// Install a signal handler so that we can set the exit code and clean up
+	if ( signal( SIGALRM, signal_handler ) == SIG_ERR )
+	{
+		hci_close_dev(device);
+		perror( "Could not install signal handler\n" );
+		return 0;
+	}
+
 	if ( timeout > 0 )
 		alarm( timeout ); // set the alarm timer, when time is up the program will be terminated
 
-	sigset_t unblock_set; // apparently the signal must be unblocked in some cases
-	sigemptyset ( &unblock_set );
-	sigaddset ( &unblock_set, SIGALRM );
-	if ( sigprocmask( SIG_UNBLOCK, &unblock_set, NULL ) != 0 )
-		fprintf( stderr, "alarm unblock failed" );
+	sigset_t sigalrm_set; // apparently the signal must be unblocked in some cases
+	sigemptyset ( &sigalrm_set );
+	sigaddset ( &sigalrm_set, SIGALRM );
+	if ( sigprocmask( SIG_UNBLOCK, &sigalrm_set, NULL ) != 0 )
+	{
+		hci_close_dev(device);
+		perror( "Could not unblock alarm signal" );
+		return 0;
+	}
 
-	// Scan in progress ...
+	// Keep scanning until the timeout is triggered or we have seen lots of advertisements.  Then exit.
+	// We exit in this case because the scan may have failed or stopped. Higher level code can restart
 	while ( count < max_count || max_count <= 0 )
 	{
 		len = read(device, buf, sizeof(buf));
@@ -162,20 +204,14 @@ int main()
 		}
 	}
 
-	// Disable scanning.
-
-	memset(&scan_cp, 0, sizeof(scan_cp));
-	scan_cp.enable = 0x00;	// Disable flag.
-
-	struct hci_request disable_adv_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &scan_cp);
-	ret = hci_send_req(device, &disable_adv_rq, 1000);
-	if ( ret < 0 ) {
+	// Prevent SIGALARM from firing during the clean up procedure
+	if ( sigprocmask( SIG_BLOCK, &sigalrm_set, NULL ) != 0 )
+	{
 		hci_close_dev(device);
-		perror("Failed to disable scan.");
+		perror( "Could not block alarm signal" );
 		return 0;
 	}
 
-	hci_close_dev(device);
-
+	exit_clean();
 	return 0;
 }
