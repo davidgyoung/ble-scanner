@@ -147,7 +147,7 @@ int main()
 	int len;
 	int count = 0;
 
-	const int timeout = 30;
+	const int timeout = 10;
 	const int reset_timeout = 1; // wether to reset the timer on a received scan event (continuous scanning)
 	const int max_count = 1000;
 
